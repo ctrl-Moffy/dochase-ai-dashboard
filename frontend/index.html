@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DoChase AI Dashboard</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            height: 100vh;
+            background: #f7f7f8;
+        }
+
+        .sidebar {
+            width: 300px;
+            background: white;
+            padding: 20px;
+            border-right: 1px solid #eee;
+        }
+
+        .logo {
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+
+        .form-group { margin-bottom: 12px; }
+
+        input {
+            width: 100%;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+
+        input:focus {
+            border: 1px solid #10a37f;
+            box-shadow: 0 0 0 2px rgba(16,163,127,0.2);
+            outline: none;
+        }
+
+        input[readonly] {
+            background: #f1f1f1;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            border: none;
+            background: #10a37f;
+            color: white;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #0d8f6f;
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .kpi-row {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+        }
+
+        .kpi-card {
+            flex: 1;
+            background: white;
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .content {
+            display: flex;
+            gap: 10px;
+            padding: 10px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .chat {
+            flex: 2;
+            background: #f9f9f9;
+            border-radius: 10px;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .message {
+            margin-bottom: 10px;
+            max-width: 70%;
+        }
+
+        .user { margin-left: auto; }
+
+        .user div {
+            background: #10a37f;
+            color: white;
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        .ai div {
+            background: white;
+            border: 1px solid #ddd;
+            padding: 12px;
+            border-radius: 10px;
+            line-height: 1.6;
+        }
+
+        .ai div p { margin-bottom: 10px; }
+        .ai div ul { padding-left: 18px; }
+
+        .chart-container {
+            flex: 1;
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid #eee;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 300px !important;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 10px;
+            border-top: 1px solid #e5e7eb;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+
+        .chat-input button {
+            width: 100px;
+            margin-left: 10px;
+        }
+
+        .grade {
+            font-size: 20px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="sidebar">
+    <div class="logo">🤖 DoChase AI</div>
+
+    <div class="form-group">
+        <label>Impressions</label>
+        <input id="impressions" type="number" oninput="calculateMetrics()">
+    </div>
+
+    <div class="form-group">
+        <label>Clicks</label>
+        <input id="clicks" type="number" oninput="calculateMetrics()">
+    </div>
+
+    <div class="form-group">
+        <label>Ad Spend ($)</label>
+        <input id="ad_spend" type="number" oninput="calculateMetrics()">
+    </div>
+
+    <div class="form-group">
+        <label>CTR (%)</label>
+        <input id="ctr" readonly>
+    </div>
+
+    <div class="form-group">
+        <label>CPC ($)</label>
+        <input id="cpc" readonly>
+    </div>
+
+    <div class="form-group">
+        <label>CPM ($)</label>
+        <input id="cpm" readonly>
+    </div>
+
+    <button onclick="analyze()">Analyze</button>
+</div>
+
+<div class="main">
+
+    <div class="kpi-row">
+        <div class="kpi-card">CTR<br><strong id="kpi-ctr">--%</strong></div>
+        <div class="kpi-card">CPC<br><strong id="kpi-cpc">$--</strong></div>
+        <div class="kpi-card">CPM<br><strong id="kpi-cpm">$--</strong></div>
+        <div class="kpi-card">Score<br><span id="kpi-score" class="grade">--</span></div>
+    </div>
+
+    <div class="content">
+
+        <div class="chat" id="chatBox">
+            <p style="color:gray;">💡 Enter campaign data and click Analyze to get AI insights</p>
+        </div>
+
+        <div class="chart-container">
+            <h4>📊 Engagement Overview</h4>
+            <canvas id="chart"></canvas>
+        </div>
+
+    </div>
+
+    <div class="chat-input">
+        <input id="chatInput" placeholder="Ask about your campaign...">
+        <button onclick="sendMessage()">Send</button>
+    </div>
+
+</div>
+
+<script>
+let chart;
+
+const impressionsInput = document.getElementById("impressions");
+const clicksInput = document.getElementById("clicks");
+const adSpendInput = document.getElementById("ad_spend");
+const ctr = document.getElementById("ctr");
+const cpc = document.getElementById("cpc");
+const cpm = document.getElementById("cpm");
+
+function calculateMetrics() {
+    const impressions = Number(impressionsInput.value) || 0;
+    const clicks = Number(clicksInput.value) || 0;
+    const spend = Number(adSpendInput.value) || 0;
+
+    ctr.value = impressions ? ((clicks/impressions)*100).toFixed(2) : "";
+    cpc.value = clicks ? (spend/clicks).toFixed(2) : "";
+    cpm.value = impressions ? ((spend/impressions)*1000).toFixed(2) : "";
+}
+
+function getGrade(ctr) {
+    if (ctr > 5) return "A";
+    if (ctr > 2) return "B";
+    if (ctr > 1) return "C";
+    return "D";
+}
+
+async function analyze() {
+
+    // 🧹 CLEAR CHAT BEFORE NEW ANALYSIS
+    document.getElementById("chatBox").innerHTML = "";
+
+    const data = {
+        impressions: Number(impressionsInput.value),
+        clicks: Number(clicksInput.value),
+        ctr: Number(ctr.value),
+        cpc: Number(cpc.value),
+        cpm: Number(cpm.value)
+    };
+
+    document.getElementById("kpi-ctr").innerText = data.ctr + "%";
+    document.getElementById("kpi-cpc").innerText = "$" + data.cpc;
+    document.getElementById("kpi-cpm").innerText = "$" + data.cpm;
+
+    const scoreEl = document.getElementById("kpi-score");
+    const grade = getGrade(data.ctr);
+    scoreEl.innerText = grade;
+
+    if (grade === "A") scoreEl.style.color = "#16a34a";
+    else if (grade === "B") scoreEl.style.color = "#84cc16";
+    else if (grade === "C") scoreEl.style.color = "#f59e0b";
+    else scoreEl.style.color = "#ef4444";
+
+    addMessage("📊 Campaign Analysis Report", "ai");
+    addMessage("🔍 Analyzing campaign performance...", "ai");
+
+    const res = await fetch("http://127.0.0.1:5000/analyze", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+    });
+
+    const result = await res.json();
+    addMessage(marked.parse(result.analysis), "ai");
+
+    drawChart(data);
+}
+
+function drawChart(data) {
+    const ctx = document.getElementById("chart");
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+            labels: ["Clicks", "Non-Clicks"],
+            datasets: [{
+                data: [data.clicks, data.impressions - data.clicks],
+                backgroundColor: ["#10a37f", "#d1d5db"],
+                borderColor: "#ffffff",
+                borderWidth: 2
+            }]
+        },
+        options: {
+            cutout: "70%",
+            plugins: {
+                legend: { position: "bottom" },
+                title: {
+                    display: true,
+                    text: "CTR: " + data.ctr + "%"
+                }
+            }
+        }
+    });
+}
+
+function addMessage(text, type) {
+    const chat = document.getElementById("chatBox");
+
+    const div = document.createElement("div");
+    div.className = "message " + type;
+    div.innerHTML = `<div>${text}</div>`;
+
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+}
+
+async function sendMessage() {
+    const input = document.getElementById("chatInput");
+    const message = input.value;
+
+    if (!message) return;
+
+    addMessage(message, "user");
+    input.value = "";
+
+    const res = await fetch("http://127.0.0.1:5000/analyze", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ question: message })
+    });
+
+    const result = await res.json();
+    addMessage(marked.parse(result.analysis), "ai");
+}
+</script>
+
+</body>
+</html>
